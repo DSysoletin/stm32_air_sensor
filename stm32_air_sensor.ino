@@ -59,18 +59,22 @@ Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RS
 
 //(60/5)*24*3 (трое суток) = 12*72=720+144 = 864
 
-#define ARCH_CNT 864
+#define ARCH_CNT 128
 //values archive
-int values[ARCH_CNT]
+int values[ARCH_CNT], i;
 
 float p = 3.1415926;
 
 void setup(void) {
-  for(i=0;i=ARCH_NUM;i++)
+  
+  pinMode(PC13, OUTPUT);
+  digitalWrite(PC13, LOW);
+  
+  for(i=0;i<=ARCH_CNT;i++)
   {
       values[i]=0;
   }
-  pinMode(PC13, OUTPUT);
+  
   Serial.begin(9600);
   Serial.print("Hello! ST7735 TFT Test");
 
@@ -100,24 +104,36 @@ void setup(void) {
 }
 
 void loop() {
-  int abs_min=85, abs_max=180, x=0, y=0;
-  static int local_min=9999, local_max=0, cur_time=0;
+  int x=0, y=0;
+  static int cur_time=0;
   
   float val,f;
+  static float val_max=0.0, val_min=4095.0;
   int val_i=0;
   String s;
   char buf[20];
   uint16_t color;
   
   val = analogRead(PA1);
+  //Update min/max values
+  if(val_max<val)
+  {
+    val_max=val;
+  }
+  if(val_min>val)
+  {
+    val_min=val;
+  }
   
   //sprintf(buf, "%f", val);
-  val_i=round(val);
-  sprintf(buf, "RAW CO2 val: %d     ", val_i);
+  
+  //Normalize value to 0...100
+  val_i=round(((val-val_min)/(val_max-val_min))*100.0);
+  sprintf(buf, "RAW/nrmCO2:%d/%u  ", round(val), val_i);
   //testdrawtext(5, 45, "                 ", ST7735_WHITE);
   // tft.fillScreen(ST77XX_BLACK);
   color=ST77XX_WHITE;
-  if(val_i<90)
+  /*if(val_i<90)
   {
     color=ST77XX_GREEN;
   }
@@ -136,79 +152,37 @@ void loop() {
   if((val_i>135)&&(val_i<999))
   {
     color=ST77XX_RED;
-  }
+  }*/
   testdrawtext(5, 5, buf, color,ST77XX_BLACK);
   
   digitalWrite(PC13, HIGH);
 
   //draw bar indicator
-
-  //x=x0+(len_x)*(CO2max-CO2)/(CO2)
-  if(val_i>abs_max)
-  {
-    val_i=abs_max;
-  }
-  f=9.0+(107.0)*((val_i-abs_min))/(abs_max-abs_min);
+  f=(1.14)*(val_i);
   x=round(f);
   tft.fillRoundRect(7,17,118,18,5,ST7735_BLACK);
   tft.fillRoundRect(9,18,x,16,3,color);
-
-  //draw local min/local max lines
-  f=9.0+(107.0)*((local_min-abs_min))/(abs_max-abs_min);
-  x=round(f);
-  tft.drawFastVLine(x, 18, 17, ST7735_CYAN);
-  tft.drawFastVLine(x+1, 18, 17, ST7735_CYAN);
-  f=9.0+(107.0)*((local_max-abs_min))/(abs_max-abs_min);
-  x=round(f);
-  tft.drawFastVLine(x, 18, 17, ST77XX_MAGENTA);
-  tft.drawFastVLine(x+1, 18, 17, ST77XX_MAGENTA),
-  
-  //tft.invertDisplay(true);
   delay(500);
-  //tft.invertDisplay(false);
-  //digitalWrite(PC13, LOW);
-  //delay(500);
-  //digitalWrite(PC13, HIGH);   // turn the LED on (HIGH is the voltage level)
-  //delay(1000);              // wait for a second
-  //digitalWrite(PC13, LOW);    // turn the LED off by making the voltage LOW
-  //delay(1000);              // wait for a second
 
-  //Sensor warmup
-  if(cur_time<120)
-  {
-    //cur_time++;
-  }
-  else
-  {
-    if(val_i<local_min)
-    {
-      local_min=val_i;
-    }
-    if(val_i>local_max)
-    {
-      local_max=val_i;
-    }
-     
-    x=40;
-    sprintf(buf, "Min CO2 val: %d     ", local_min);
-    testdrawtext(5, x, buf, ST7735_CYAN,ST7735_BLACK);
-    sprintf(buf, "MAX CO2 val: %d     ", local_max);
-    x=x+10;
-    testdrawtext(5, x, buf, ST77XX_MAGENTA,ST7735_BLACK);
-  }
-
-  //every 5 minutes - save data in archive.
+  //every 225 seconds - save data in archive (archive length is 128 elements, 8 hours if we will save one in 225 sec).
   //assume that "tick" occuring every 0.5 sec -> 5 mins = 600 ticks.
-  if(cur_time>=600)
+  //if(cur_time>=600)
+  if(cur_time>=40)
   {
-    for(i=0;i=ARCH_NUM-1;i++)
+    //Redraw graph
+    tft.fillRect(0,40,128,120,ST7735_WHITE);
+    for(i=ARCH_CNT-1;i>0;i--)
     {
-      values[i+1]=values[i];
+      values[i]=values[i-1];
+      //draw point on graph
+      x=127-i;
+      y=159-values[i];
+      //y=159-i;
+      tft.drawPixel(x,y,ST7735_RED);
     }
     values[0]=val_i;
+    cur_time=0;
   }
-  
-
   cur_time++;
 }
 
